@@ -1,0 +1,127 @@
+Sqr=dict()
+Sqc=dict()
+for i in range(1,13):
+    Sqr[i]=3
+    Sqc[i]=25
+Sqr[11]=2.5
+Sqc[11]=19
+Sqc[5]=22
+Sqc[12]=22
+train0=pd.read_csv('data/dataset.csv')
+
+train0['label']=None
+
+inds_neg=[]
+inds_neg+=list( train0.loc[(0>train0['WindSpeed'])|(train0['RotorSpeed']<0)|(train0['Power']<0),].index)
+train1=train0.drop(inds_neg,axis=0)
+train0.loc[inds_neg,'label']=1
+
+inds0=[]
+for i in range(1,13):
+    inds0+=list( train1.loc[(Sqc[i]>=train1['WindSpeed'])&(train1['WindSpeed']>=Sqr[i])&(train1['WindNumber']==i),].index)
+inds_ex=list(set(train1.index)-set(inds0))
+train2=train1.loc[inds0]
+
+train0.loc[inds_ex,'label']=1
+#这样做会有0.1的提升
+
+
+slow=dict()
+sup=dict()
+for i in range(1,13):
+    slow[i]=8.33
+    sup[i]=16.8
+slow[5]=5.5
+sup[5]=19
+slow[11]=5
+sup[11]=14
+slow[12]=5.5
+sup[12]=17
+
+
+inds2=[]
+for i in range(1,13):
+    inds2+=list( train2.loc[(sup[i]>=train1['RotorSpeed'])&(train1['RotorSpeed']>=slow[i])&(train1['WindNumber']==i),].index)
+inds_ex2=list(set(train2.index)-set(inds2))
+train3=train1.loc[inds2]
+train0.loc[inds_ex2,'label']=0
+
+Rdict=dict()
+Rdict[1]=99/2
+Rdict[2]=99/2
+Rdict[3]=99/2
+Rdict[4]=99/2
+Rdict[5]=100.5/2
+Rdict[6]=99/2
+Rdict[7]=99/2
+Rdict[8]=99/2
+Rdict[9]=99/2
+Rdict[10]=99/2
+Rdict[11]=115/2
+Rdict[12]=104.8/2
+train3['R']=train3['WindNumber']
+for i in range(1,13):
+    train3['R']=train3['R'].replace(i,Rdict[i])
+	
+	
+#Power/WindSpeed
+train3['PW']=train3['Power']/train3['WindSpeed']
+
+#RotorSpeed/WindSpeed
+train3['RW']=train3['RotorSpeed']/train3['WindSpeed']
+
+#RotorSpeed/Power
+train3['RP']=train3['Power']/train3['RotorSpeed']
+
+# train3['k1']=train3['Power']/(train3['R']**2*train3['WindSpeed']**3)
+train3['k1']=train3['Power']/(train3['R']**2*train3['WindSpeed']**3)
+
+# train3['lambda']=train3['RotorSpeed']*train3['R']/train3['WindSpeed']**1
+train3['lambda']=train3['RotorSpeed']*train3['R']/train3['WindSpeed']
+
+# train3['k2']=train3['Power']/(train3['RotorSpeed']*train3['R'])
+train3['k2']=train3['Power']/(train3['RotorSpeed']*train3['R'])
+
+names=[ 'Power', 'WindSpeed','RotorSpeed', 'PW', 'RW','RP',  'k1', 'lambda', 'k2']
+
+
+clf=KNN()
+df=train3[names]
+clf.fit(df)
+y_train_scores = clf.decision_scores_  # 返回训练数据上的异常值 (分值越大越异常)
+y_train_pred = clf.labels_  # 返回训练数据上的分类标签 (0: 正常值, 1: 异常值)
+
+
+alpha=0.05
+q=np.quantile(y_train_scores,1-alpha)
+y_train_pred[y_train_scores>q]=1
+y_train_pred[y_train_scores<=q]=0
+plt.figure(figsize=(20,5))
+
+plt.scatter(df.loc[y_train_pred==0,'WindSpeed'],df.loc[y_train_pred==0,'Power'],c='white',s=20,edgecolors='k')
+plt.scatter(df.loc[y_train_pred==1,'WindSpeed'],df.loc[y_train_pred==1,'Power'],c='white',s=20,edgecolors='y')
+
+
+train0.loc[df.loc[y_train_pred==1].index,'label']=1
+train0.loc[df.loc[y_train_pred==0].index,'label']=0
+
+results=pd.DataFrame({'WindNumber':train0['WindNumber'],'Time':train0['Time'],'label':train0['label'].astype(int)})
+results.to_csv('./data/all7_results.csv',index=False)
+print(results)
+print(f'''异常值率：{np.mean(results['label'])}''')
+# 0.82849844825 0.05
+
+#0.82748156562 0.04
+
+#0.82839484 0.06
+
+#0.83513080 0.05  转速范围外的点设置为正常的结果
+
+
+
+
+
+
+
+
+
